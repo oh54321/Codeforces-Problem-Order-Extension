@@ -130,6 +130,7 @@ submissionListRequest.onreadystatechange =function(){
         }
         if(alerted)
         {
+            chrome.runtime.sendMessage({sol: solves, pro: problems});
             alert("Problem Order: " + problems); //Prints out new problem order
         }
         setTimeout(function(){}, 10000); //Waits 10 seconds to not constantly be making requests
