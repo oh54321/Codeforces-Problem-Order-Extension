@@ -11,7 +11,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         {
             roundNum = parseInt(url.substring(31)); //Checks if url end in /contests/[number]
             currentlyTracking = true;
-            checkOngoing(); 
+            tallyProblems(); 
         }
     }
     catch(err) {
@@ -19,18 +19,11 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     }
 })
 
-function checkOngoing()
-{
-    const listURL='https://codeforces.com/api/contest.list'; //Sends request for list of contests
-    contestListRequest.open("GET", listURL);
-    contestListRequest.send();
-}
-
 function tallyProblems()
 {
-    const contestURL='https://codeforces.com/api/contest.status?contestId='+roundNum; //Retrieves contest submissions
-    submissionListRequest.open("GET", contestURL);
-    submissionListRequest.send();
+    const contestURL='https://codeforces.com/api/contest.standings?contestId='+roundNum;
+    contestListRequest.open("GET", contestURL);
+    contestListRequest.send();
 }
 
 function reset()
@@ -42,100 +35,65 @@ function reset()
 contestListRequest.onreadystatechange =function(){
     if(this.readyState == 4) //Waits until list of contests is recieved
     {
-    doc = contestListRequest.responseText.substring(1);
-    var keepChecking = true;
-    var contestRE = /{.*?}/gs; //Regexs used for codeforces contest objects
-    var idRE = /"id":\d+/s;
-    var phaseRE = /"phase":"\w+/s;
-    while(keepChecking)
-        {
-            var contestItem = contestRE.exec(doc)[0];
-            id = idRE.exec(contestItem)[0].substring(5);
-            phase = parseInt(phaseRE.exec(contestItem)[0].substring(9));
-            if(id == roundNum)
-            {
-                keepChecking = false;
-                if(!(phase == "BEFORE")) //Will change to "coding" to check if contest is ongoing
-                {
-                    tallyProblems();
-                }
-                else
-                {
-                    reset(); //Contest is not ongoing, stops tracking if currently tracking problem order
-                }
-            }
-        }
-    }
-}
-
-submissionListRequest.onreadystatechange =function(){
-    if(this.readyState == 4) //Waits until list of submissions is recieved
+    var contestStandings = JSON.parse(contestListRequest.responseText).result; //Returns json object of contest standings
+    if(contestStandings.contest.phase == "BEFORE") //Will change to "coding", right now just ends it if contest hasnt started
     {
-        doc = submissionListRequest.responseText;
-        var solves = [];
-        var problems = [];
-
-        var partTypeRE = /"participantType":"\w+/gs; //Regexes for codeforces submission objects
-        var verdictRE = /"verdict":"\w+/gs;
-        var problemRE = /"index":"\w+/gs;
-        arr1 = partTypeRE.exec(doc);
-        arr2 = verdictRE.exec(doc);
-        arr3 = problemRE.exec(doc);
-        while(arr1 != null) //Runs until there are no more submissions to check
+        reset(); //Reset values
+        return;
+    }
+    var solves = [];  //Number of solves of problems, problem problems[i] has solves[i] solves
+    var problems = []; //Names of problems
+    var i, j;
+    for(i = 0; i < contestStandings.problems.length; i++) //Loops through problems, adding names of problems (e. g., A, B, C1, etc.)
+    {
+        problems.push(contestStandings.problems[i].index);
+        solves.push(0);
+    }
+    for(i = 0; i < contestStandings.rows.length; i++) //Loops through contestants
+    {
+        for(j = 0; j < contestStandings.rows[i].problemResults.length; j++) //Loops through problem data of contestant
         {
-            partType = arr1[0].substring(19);
-            verdict = arr2[0].substring(11);
-            problem = arr3[0].substring(9);
-            if(partType == "CONTESTANT" && verdict == "OK")
+            if(contestStandings.rows[i].problemResults[j].points != 0.0) //Checks if contestant solved each problem
             {
-                var notAdded = true; 
-                for(i = 0; i < problems.length; i++) //Goes through list of problems, checking if equal to current problem
-                {
-                    if(problems[i] == problem) //Problem has been added to list
-                    {
-                        solves[i]++;
-                        notAdded = false;
-                    }
-                }
-                if(notAdded) //Problem has not been added to list, so adds it to list
-                {
-                    problems.push(problem);
-                    solves.push(1);
-                }
-            }
-            arr1 = partTypeRE.exec(doc); //Iterates to next submission
-            arr2 = verdictRE.exec(doc);
-            arr3 = problemRE.exec(doc);
-        }
-        sort(solves, problems); //Sorts based on number of solves
-        var alerted = false;//Boolean for whether we will print out order
-        if(prevproblems.length == 0) //If this is the first time order of problems is checked
-        {
-            alerted = true; //We will print out order
-            for(i = 0; i < problems.length; i++)
-            {
-                prevproblems.push(problems[i]); //Adds each problem to list of previous problems
+                solves[j] += 1;
             }
         }
-        else
+    }
+    sort(solves, problems); //Sorts based on number of solves
+    var alerted = false;//Boolean for whether we will print out order
+    if(prevproblems.length == 0) //If this is the first time order of problems is checked
+    {
+        alerted = true; //We will print out order
+        for(i = 0; i < problems.length; i++)
         {
-            for(i = 0; i < problems.length; i++)
+            prevproblems.push(problems[i]); //Adds each problem to list of previous problems
+        }
+    }
+    else
+    {
+        for(i = 0; i < problems.length; i++)
+        {
+            if(!(problems[i] == prevproblems[i])) //If the previous and current problem orders are different
             {
-                if(!(problems[i] == prevproblems[i])) //If the previous and current problem orders are different
-                {
-                    alerted = true; //We will print out order
-                }
-                prevproblems[i] = problems[i]; //Stores current order in previous problem orders
+                alerted = true; //We will print out order
             }
+            prevproblems[i] = problems[i]; //Stores current order in previous problem orders
         }
-        if(alerted)
-        {
-            alert("Problem Order: " + problems); //Prints out new problem order
-        }
-        setTimeout(function(){}, 10000); //Waits 10 seconds to not constantly be making requests
-        checkOngoing(); //Checks if contest has finished, if not does same thing
+    }
+    if(alerted)
+    {
+        chrome.runtime.sendMessage({sol: solves, pro: problems});
+        alert("Problem Order: " + problems); //Prints out new problem order
+    }
+    chrome.alarms.create("XMLAlarm", {delayInMinutes: 1}); //Waits for a minute, tallies problem results again
     }
 }
+
+chrome.alarms.onAlarm.addListener(function( alarm ) {
+    chrome.alarms.clear("XMLAlarm"); //Alarm has already fired, sets it off
+    tallyProblems(); //Tallies problem results again
+  });
+
 function sort(arr1, arr2) { 
     let n = arr1.length; //Selection sort
     let max;
