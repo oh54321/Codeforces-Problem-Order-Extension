@@ -79,20 +79,13 @@ contestListRequest.onreadystatechange =function(){
             }
             prevproblems[i] = problems[i]; //Stores current order in previous problem orders
         }
-
     }
     if(alerted)
     {
         chrome.runtime.sendMessage({sol: solves, pro: problems});
         alert("Problem Order: " + problems); //Prints out new problem order
     }
-    chrome.alarms.create("XMLAlarm", {delayInMinutes: 1}); //Waits for a minute, tallies problem results again        if(alerted)
-        {
-            chrome.runtime.sendMessage({sol: solves, pro: problems});
-            alert("Problem Order: " + problems); //Prints out new problem order
-        }
-        setTimeout(function(){}, 10000); //Waits 10 seconds to not constantly be making requests
-        checkOngoing(); //Checks if contest has finished, if not does same thing
+    chrome.alarms.create("XMLAlarm", {delayInMinutes: 1}); //Waits for a minute, tallies problem results again
     }
 }
 
